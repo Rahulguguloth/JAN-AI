@@ -87,8 +87,18 @@ export default function App() {
       setCurrentScreen(screen as Screen);
     } else if (command.startsWith('query:')) {
       // Extract query and navigate to companion
-      const query = command.split(':')[1];
-      setVoiceQuery(query);
+      const query = command.substring(6);
+      
+      // Map language codes to full names to instruct the LLM
+      const languageMap: Record<string, string> = {
+        'en': 'English', 'hi': 'Hindi', 'ta': 'Tamil', 'te': 'Telugu',
+        'bn': 'Bengali', 'mr': 'Marathi', 'gu': 'Gujarati', 'kn': 'Kannada',
+        'ml': 'Malayalam', 'pa': 'Punjabi'
+      };
+      const langName = languageMap[language] || 'English';
+      
+      // Append a hidden instruction so the LLM replies in the same language
+      setVoiceQuery(`${query}\n\n[Please reply entirely in ${langName}]`);
       setCurrentScreen('companion');
     }
   };

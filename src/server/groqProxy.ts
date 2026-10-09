@@ -84,7 +84,7 @@ router.post('/generate', async (req: Request, res: Response) => {
     try {
       console.log('📤 Sending request to Groq API...');
       const requestBody = {
-        model: 'openai/gpt-oss-20b',
+        model: 'llama3-70b-8192',
         messages: [
           {
             role: 'system',
@@ -96,7 +96,7 @@ Your job is to help citizens:
 - File complaints and access public services
 
 Response Style:
-• Always be concise and to the point (under 150 words)
+• Be concise and to the point
 • Use simple language anyone can understand
 • Provide only the key actions or facts
 • No long introductions or repetition
@@ -150,13 +150,6 @@ Response Style:
         return res.status(500).json({
           error: 'No response from Groq',
         });
-      }
-
-      // Post-process: Trim to max 120 words for conciseness
-      const words = text.trim().split(' ');
-      if (words.length > 120) {
-        text = words.slice(0, 120).join(' ') + '...';
-        console.log('✂️ Trimmed response to 120 words');
       }
 
       console.log('✅ Success with Groq (openai/gpt-oss-20b)');

@@ -111,6 +111,36 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
     };
   }, [selectedLanguage]);
 
+  useEffect(() => {
+    const handleSpeakResponse = (e: any) => {
+      const response = e.detail;
+      if (response) {
+        const cleanSpeechText = response
+          .replace(/(\*\*|__)(.*?)\1/g, '$2')
+          .replace(/(\*|_)(.*?)\1/g, '$2')
+          .replace(/#{1,6}\s?/g, '')
+          .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+          .replace(/`{1,3}[^`]*`{1,3}/g, '')
+          .replace(/\n\s*\*\s/g, '. ')
+          .replace(/\n\s*-\s/g, '. ')
+          .replace(/\n\s*•\s/g, '. ')
+          .replace(/•/g, '')
+          .replace(/\be\.g\.,?/gi, 'for example, ')
+          .replace(/\bi\.e\.,?/gi, 'that is, ')
+          .replace(/\n/g, '. ')
+          .replace(/[*_~>]/g, '')
+          .replace(/\.\s*\./g, '.')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+        speak(cleanSpeechText);
+      }
+    };
+    window.addEventListener('speak-response', handleSpeakResponse);
+    return () => {
+      window.removeEventListener('speak-response', handleSpeakResponse);
+    };
+  }, [selectedLanguage]); // Re-bind when language changes so speak uses the current language
+
   const handleVoiceCommand = async (command: string) => {
     console.log('🎯 handleVoiceCommand called with:', command);
     setLastCommand(command);
@@ -181,47 +211,45 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
       onVoiceCommand?.(commandType, selectedLanguage.code);
       console.log('📡 onVoiceCommand called');
     } else {
-      console.log('❓ No navigation match - treating as general query');
-      // General query - use Groq-powered backend for intelligent response
-      try {
-        setIsListening(false); // Stop listening while processing
-
-        // Use the new backend API with session management
-        const sessionId = `voice-session-${Date.now()}`;
-        const result = await janaiAPI.civicCompanion.sendMessage(
-          command,
-          sessionId,
-          'voice-user'
-        );
-
-        response = result.response || 'I am processing your request. Please ask again.';
-
-        if (!response || response.trim().length === 0) {
-          response = 'I am here to help. Please ask your question again.';
-        }
-      } catch (error: any) {
-        console.error('Voice AI error:', error);
-        response = `I encountered an issue. Please try again or rephrase your question.`;
-      }
+      console.log('❓ No navigation match - delegating query to companion');
+      
+      // Stop listening while processing
+      setIsListening(false);
+      
+      // Navigate to companion with query
       commandType = `query:${command}`;
       console.log('🚀 Calling onVoiceCommand with query:', commandType);
       onVoiceCommand?.(commandType, selectedLanguage.code);
       console.log('📡 onVoiceCommand called for query');
+      
+      // We do NOT speak here, nor do we fetch LLM here.
+      // CivicCompanion will handle fetching the response and will dispatch 'speak-response'.
     }
 
-    console.log('🎤 Speaking response:', response);
-    // Speak response in selected language
-    speak(response);
+    if (response) {
+      console.log('🎤 Speaking navigation response:', response);
+      // Speak navigation response in selected language
+      const cleanSpeechText = response
+        .replace(/(\*\*|__)(.*?)\1/g, '$2') // Remove bold
+        .replace(/(\*|_)(.*?)\1/g, '$2')    // Remove italic
+        .replace(/#{1,6}\s?/g, '')          // Remove headers
+        .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove links
+        .replace(/`{1,3}[^`]*`{1,3}/g, '')  // Remove code blocks
+        .replace(/\n\s*\*\s/g, '. ')        // Replace bullet points with periods
+        .replace(/\n\s*-\s/g, '. ')         // Replace dash bullets with periods
+        .replace(/\n/g, '. ')               // Replace newlines with periods
+        .replace(/[*_~>]/g, '')             // Remove leftover markdown chars
+        .replace(/\.\s*\./g, '.')           // Fix multiple periods
+        .replace(/\s{2,}/g, ' ')            // Remove multiple spaces
+        .trim();
 
-    // For non-navigation queries, continue listening for follow-up
-    if (!isNavigation) {
-      console.log('🔄 Non-navigation command - will restart listening after response');
-      setTimeout(() => {
-        setTranscript('');
-        recognitionRef.current?.start();
-        setIsListening(true);
-      }, response.length * 50 + 1000); // Wait for speech to finish
-    } else {
+      speak(cleanSpeechText);
+    }
+
+    // For non-navigation queries, do NOT automatically restart listening.
+    // The user must click the mic again to speak to prevent the STT from picking up the TTS output
+    // and causing an infinite feedback loop.
+    if (isNavigation) {
       console.log('🎯 Navigation command completed');
     }
   };
@@ -344,8 +372,9 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
 
       console.log('Speaking text:', text, 'in language:', selectedLanguage.speechCode);
 
-      // Cancel any ongoing speech
+      // Cancel any ongoing speech and wait a moment to prevent 'interrupted' error in Chrome
       synthRef.current.cancel();
+      await new Promise(resolve => setTimeout(resolve, 50));
 
       // Ensure voices are loaded
       let voices = synthRef.current.getVoices();
@@ -380,83 +409,62 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
         });
       }
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = selectedLanguage.speechCode;
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-
-      // Log available voices for debugging
-      console.log('All available voices:', voices);
-      console.log('Looking for voice matching language code:', selectedLanguage.code, 'or speech code:', selectedLanguage.speechCode);
-
       // Try to find a voice that matches the selected language
       const languageCode = selectedLanguage.code.toLowerCase();
       const speechCode = selectedLanguage.speechCode.toLowerCase();
 
-      // First try exact match with speech code (e.g., 'te-IN')
-      let preferredVoice = voices.find(voice => {
-        const voiceLang = voice.lang.toLowerCase();
-        console.log('Checking voice:', voice.name, 'with lang:', voiceLang);
-        return voiceLang === speechCode;
-      });
-
-      // If not found, try matching just the language code (e.g., 'te')
+      let preferredVoice = voices.find(voice => voice.lang.toLowerCase() === speechCode);
       if (!preferredVoice) {
-        console.log('No exact match, trying language code match...');
         preferredVoice = voices.find(voice => {
           const voiceLang = voice.lang.toLowerCase();
           return voiceLang.startsWith(languageCode + '-') || voiceLang === languageCode;
         });
       }
-
-      // If still not found, try any voice that includes the language code
       if (!preferredVoice) {
-        console.log('No language code match, trying partial match...');
-        preferredVoice = voices.find(voice =>
-          voice.lang.toLowerCase().includes(languageCode)
-        );
+        preferredVoice = voices.find(voice => voice.lang.toLowerCase().includes(languageCode));
       }
 
-      // If we found a matching voice, use it
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
-        console.log('Using voice:', preferredVoice.name, 'for language:', selectedLanguage.name,
-          'voice lang:', preferredVoice.lang);
-      } else {
-        console.warn('No matching voice found for language:', selectedLanguage.name,
-          'Using default voice for:', utterance.lang);
-        // Try to use the first available voice if none matched
-        if (voices.length > 0) {
-          utterance.voice = voices[0];
-          console.log('Falling back to first available voice:', voices[0].name);
+      // Split long text into smaller sentences to prevent Chrome's 15-second speech limit bug
+      const parts = text.split(/([.!?\n]+)/);
+      const sentences = [];
+      for (let i = 0; i < parts.length; i += 2) {
+        const sentence = (parts[i] || '') + (parts[i + 1] || '');
+        if (sentence.trim()) {
+          sentences.push(sentence.trim());
         }
       }
 
-      utterance.onend = () => {
-        console.log('Speech synthesis ended');
-        setIsSpeaking(false);
-      };
-
-      utterance.onerror = (event) => {
-        console.error('Speech synthesis error:', event);
-        setIsSpeaking(false);
-      };
-
-      utterance.onboundary = (event) => {
-        console.log('Speech boundary:', event);
-      };
-
-      console.log('Starting speech with utterance:', {
-        text,
-        lang: utterance.lang,
-        voice: utterance.voice?.name || 'default',
-        rate: utterance.rate,
-        pitch: utterance.pitch
-      });
+      console.log(`Split text into ${sentences.length} sentences for speech.`);
 
       setIsSpeaking(true);
-      synthRef.current.speak(utterance);
+
+      sentences.forEach((sentence, index) => {
+        const utterance = new SpeechSynthesisUtterance(sentence);
+        utterance.lang = selectedLanguage.speechCode;
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        } else if (voices.length > 0) {
+          utterance.voice = voices[0];
+        }
+
+        if (index === sentences.length - 1) {
+          utterance.onend = () => {
+            console.log('Speech synthesis ended');
+            setIsSpeaking(false);
+          };
+        }
+
+        utterance.onerror = (event) => {
+          console.error('Speech synthesis error on chunk:', event);
+          setIsSpeaking(false);
+        };
+
+        synthRef.current?.speak(utterance);
+      });
     } catch (error) {
       console.error('Error in speak function:', error);
       setIsSpeaking(false);

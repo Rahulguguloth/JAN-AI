@@ -29,31 +29,28 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
     const income = formData.get('income') as string;
 
     try {
-      // Create account via server
-      const response = await apiFetch(`${API_BASE_URL}/signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`
-        },
-        body: JSON.stringify({ email, password, name, age, occupation, income })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to sign up');
-      }
-
-      // Sign in immediately after signup
-      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+      // Create account directly via Supabase Auth
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email,
-        password
+        password,
+        options: {
+          data: {
+            full_name: name,
+            age: parseInt(age) || null,
+            occupation: occupation,
+            income: parseInt(income) || null
+          }
+        }
       });
 
-      if (signInError) throw signInError;
+      if (signUpError) throw signUpError;
 
-      onAuthSuccess(authData.session.access_token, authData.user.id);
+      // Check if session was created (might be null if email confirmation is required)
+      if (authData.session && authData.user) {
+        onAuthSuccess(authData.session.access_token, authData.user.id);
+      } else {
+        setError('Sign up successful! Please check your email to confirm your account, or try signing in.');
+      }
     } catch (err: any) {
       console.error('Sign up error:', err);
       setError(err.message || 'Failed to sign up');

@@ -6,6 +6,7 @@ import { Card } from './ui/card';
 import { API_BASE_URL } from '../utils/supabase-client';
 import { extractTextFromFile, validateFile } from '../utils/fileProcessor';
 import { civicCompanion } from '../utils/geminiService';
+import { supabase } from '../utils/supabase-client';
 
 interface Message {
   id: string;
@@ -43,6 +44,33 @@ export function CivicCompanion({ accessToken, onBack, initialQuery }: CivicCompa
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load chat history from Supabase
+  useEffect(() => {
+    const fetchHistory = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (data && data.length > 0) {
+        const loadedMessages = data.map(msg => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.created_at
+        }));
+        
+        // Keep the welcome message if no history, otherwise prepend it
+        setMessages(prev => [prev[0], ...loadedMessages]);
+      }
+    };
+    fetchHistory();
+  }, []);
 
   // Handle initial voice query
   useEffect(() => {
@@ -102,6 +130,15 @@ export function CivicCompanion({ accessToken, onBack, initialQuery }: CivicCompa
         content: analysis,
         timestamp: new Date().toISOString()
       };
+
+      // Save to Supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('chat_messages').insert([
+          { user_id: user.id, role: 'user', content: userMessage.content },
+          { user_id: user.id, role: 'assistant', content: assistantMessage.content }
+        ]);
+      }
 
       setMessages((prev: Message[]) => [...prev, assistantMessage]);
       setUploadedFile(null);
@@ -198,7 +235,7 @@ export function CivicCompanion({ accessToken, onBack, initialQuery }: CivicCompa
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: inputMessage,
+      content: inputMessage.replace(/\n\n\[Please reply entirely in .*?\]/g, ''),
       timestamp: new Date().toISOString()
     };
 
@@ -217,6 +254,18 @@ export function CivicCompanion({ accessToken, onBack, initialQuery }: CivicCompa
         content: response,
         timestamp: new Date().toISOString()
       };
+
+      // Dispatch event for VoiceAssistant to speak
+      window.dispatchEvent(new CustomEvent('speak-response', { detail: response }));
+
+      // Save to Supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('chat_messages').insert([
+          { user_id: user.id, role: 'user', content: userMessage.content },
+          { user_id: user.id, role: 'assistant', content: assistantMessage.content }
+        ]);
+      }
 
       setMessages((prev: Message[]) => [...prev, assistantMessage]);
     } catch (error: any) {
