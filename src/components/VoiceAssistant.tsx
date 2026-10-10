@@ -142,6 +142,11 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
   }, [selectedLanguage]); // Re-bind when language changes so speak uses the current language
 
   const handleVoiceCommand = async (command: string) => {
+    if (!command || !command.trim()) {
+      console.log('⚠️ Ignoring empty voice command');
+      return;
+    }
+
     console.log('🎯 handleVoiceCommand called with:', command);
     setLastCommand(command);
 
@@ -363,14 +368,15 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
     return translations[langCode]?.[text] || text;
   };
 
-  const speak = async (text: string) => {
+  const speak = async (text: string, overrideLanguage?: Language) => {
+    const langToUse = overrideLanguage || selectedLanguage;
     try {
       if (!synthRef.current) {
         console.error('Speech synthesis not supported or initialized');
         return;
       }
 
-      console.log('Speaking text:', text, 'in language:', selectedLanguage.speechCode);
+      console.log('Speaking text:', text, 'in language:', langToUse.speechCode);
 
       // Cancel any ongoing speech and wait a moment to prevent 'interrupted' error in Chrome
       synthRef.current.cancel();
@@ -410,8 +416,8 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
       }
 
       // Try to find a voice that matches the selected language
-      const languageCode = selectedLanguage.code.toLowerCase();
-      const speechCode = selectedLanguage.speechCode.toLowerCase();
+      const languageCode = langToUse.code.toLowerCase();
+      const speechCode = langToUse.speechCode.toLowerCase();
 
       let preferredVoice = voices.find(voice => voice.lang.toLowerCase() === speechCode);
       if (!preferredVoice) {
@@ -425,7 +431,8 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
       }
 
       // Split long text into smaller sentences to prevent Chrome's 15-second speech limit bug
-      const parts = text.split(/([.!?\n]+)/);
+      // We must include the Devanagari Danda '।' (U+0964) for Hindi/Marathi text
+      const parts = text.split(/([.!?\n।]+)/);
       const sentences = [];
       for (let i = 0; i < parts.length; i += 2) {
         const sentence = (parts[i] || '') + (parts[i + 1] || '');
@@ -440,16 +447,16 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
 
       sentences.forEach((sentence, index) => {
         const utterance = new SpeechSynthesisUtterance(sentence);
-        utterance.lang = selectedLanguage.speechCode;
+        utterance.lang = langToUse.speechCode;
         utterance.rate = 0.9;
         utterance.pitch = 1;
         utterance.volume = 1;
 
         if (preferredVoice) {
           utterance.voice = preferredVoice;
-        } else if (voices.length > 0) {
-          utterance.voice = voices[0];
         }
+        // If we don't find a matching voice, DO NOT force voices[0] (which is usually English).
+        // Let the browser automatically pick the best voice for the utterance.lang.
 
         if (index === sentences.length - 1) {
           utterance.onend = () => {
@@ -458,7 +465,11 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
           };
         }
 
-        utterance.onerror = (event) => {
+        utterance.onerror = (event: any) => {
+          if (event.error === 'interrupted' || event.error === 'canceled') {
+            // Ignore expected cancellation errors so we don't mistakenly set isSpeaking to false
+            return;
+          }
           console.error('Speech synthesis error on chunk:', event);
           setIsSpeaking(false);
         };
@@ -517,7 +528,7 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
 
     // Announce language change in the new language
     const changeMessage = getTranslatedResponse('Language changed to', language.code);
-    speak(`${changeMessage} ${language.nativeName}`);
+    speak(`${changeMessage} ${language.nativeName}`, language);
   };
 
   const toggleSpeech = () => {
@@ -633,7 +644,7 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
             {isListening ? (
               <>
                 <MicOff className="w-4 h-4 mr-2" />
-                Stop
+                Stop Mic
               </>
             ) : (
               <>
@@ -644,11 +655,15 @@ export function VoiceAssistant({ onVoiceCommand, currentScreen }: VoiceAssistant
           </Button>
           <Button
             onClick={toggleSpeech}
-            variant="outline"
-            disabled={!lastCommand}
+            variant={isSpeaking ? "destructive" : "outline"}
+            disabled={!lastCommand && !isSpeaking}
+            className={isSpeaking ? "flex-1" : ""}
           >
             {isSpeaking ? (
-              <VolumeX className="w-4 h-4" />
+              <>
+                <VolumeX className="w-4 h-4 mr-2" />
+                Stop Audio
+              </>
             ) : (
               <Volume2 className="w-4 h-4" />
             )}

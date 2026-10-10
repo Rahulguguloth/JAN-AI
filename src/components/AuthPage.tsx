@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { IndianRupee, Flag } from 'lucide-react';
 
 interface AuthPageProps {
-  onAuthSuccess: (accessToken: string, userId: string) => void;
+  onAuthSuccess: (accessToken: string, userId: string, name?: string) => void;
 }
 
 export function AuthPage({ onAuthSuccess }: AuthPageProps) {
@@ -21,42 +21,17 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
     setError('');
 
     const formData = new FormData(e.currentTarget);
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
     const name = formData.get('name') as string;
-    const age = formData.get('age') as string;
-    const occupation = formData.get('occupation') as string;
-    const income = formData.get('income') as string;
 
-    try {
-      // Create account directly via Supabase Auth
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: name,
-            age: parseInt(age) || null,
-            occupation: occupation,
-            income: parseInt(income) || null
-          }
-        }
-      });
+    // Simulate network request
+    await new Promise(resolve => setTimeout(resolve, 800));
 
-      if (signUpError) throw signUpError;
+    // Generate random login credentials
+    const randomToken = 'token_' + Math.random().toString(36).substring(2, 15);
+    const randomUserId = 'user_' + Math.random().toString(36).substring(2, 15);
 
-      // Check if session was created (might be null if email confirmation is required)
-      if (authData.session && authData.user) {
-        onAuthSuccess(authData.session.access_token, authData.user.id);
-      } else {
-        setError('Sign up successful! Please check your email to confirm your account, or try signing in.');
-      }
-    } catch (err: any) {
-      console.error('Sign up error:', err);
-      setError(err.message || 'Failed to sign up');
-    } finally {
-      setIsLoading(false);
-    }
+    setIsLoading(false);
+    onAuthSuccess(randomToken, randomUserId, name);
   };
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -66,23 +41,19 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
     const formData = new FormData(e.currentTarget);
     const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
+    
+    // Create a mock username from email
+    const name = email.split('@')[0];
 
-    try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+    // Simulate network request
+    await new Promise(resolve => setTimeout(resolve, 800));
 
-      if (signInError) throw signInError;
+    // Generate random login credentials
+    const randomToken = 'token_' + Math.random().toString(36).substring(2, 15);
+    const randomUserId = 'user_' + Math.random().toString(36).substring(2, 15);
 
-      onAuthSuccess(data.session.access_token, data.user.id);
-    } catch (err: any) {
-      console.error('Sign in error:', err);
-      setError(err.message || 'Failed to sign in');
-    } finally {
-      setIsLoading(false);
-    }
+    setIsLoading(false);
+    onAuthSuccess(randomToken, randomUserId, name);
   };
 
   return (

@@ -45,44 +45,12 @@ export function CivicCompanion({ accessToken, onBack, initialQuery }: CivicCompa
     scrollToBottom();
   }, [messages]);
 
-  // Load chat history from Supabase
-  useEffect(() => {
-    const fetchHistory = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('chat_messages')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
-
-      if (data && data.length > 0) {
-        const loadedMessages = data.map(msg => ({
-          id: msg.id,
-          role: msg.role,
-          content: msg.content,
-          timestamp: msg.created_at
-        }));
-        
-        // Keep the welcome message if no history, otherwise prepend it
-        setMessages(prev => [prev[0], ...loadedMessages]);
-      }
-    };
-    fetchHistory();
-  }, []);
+  // Chat history is kept in-memory only (no Supabase)
 
   // Handle initial voice query
   useEffect(() => {
     if (initialQuery && initialQuery.trim()) {
-      setInputMessage(initialQuery);
-      // Auto-submit the voice query
-      setTimeout(() => {
-        const form = document.querySelector('form');
-        if (form) {
-          form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-        }
-      }, 500);
+      processAndSendMessage(initialQuery);
     }
   }, [initialQuery]);
 
@@ -228,25 +196,22 @@ export function CivicCompanion({ accessToken, onBack, initialQuery }: CivicCompa
     }
   };
 
-  const handleSendMessage = async (e: any) => {
-    e.preventDefault();
-    if (!inputMessage.trim() || isLoading) return;
+  const processAndSendMessage = async (msgText: string) => {
+    if (!msgText.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: inputMessage.replace(/\n\n\[Please reply entirely in .*?\]/g, ''),
+      content: msgText.replace(/\n\n\[Please reply entirely in .*?\]/g, ''),
       timestamp: new Date().toISOString()
     };
 
     setMessages((prev: Message[]) => [...prev, userMessage]);
-    const messageToSend = inputMessage;
-    setInputMessage('');
     setIsLoading(true);
 
     try {
       // Use Gemini AI for intelligent response
-      const response = await civicCompanion.sendMessage(messageToSend);
+      const response = await civicCompanion.sendMessage(msgText);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -257,15 +222,6 @@ export function CivicCompanion({ accessToken, onBack, initialQuery }: CivicCompa
 
       // Dispatch event for VoiceAssistant to speak
       window.dispatchEvent(new CustomEvent('speak-response', { detail: response }));
-
-      // Save to Supabase
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from('chat_messages').insert([
-          { user_id: user.id, role: 'user', content: userMessage.content },
-          { user_id: user.id, role: 'assistant', content: assistantMessage.content }
-        ]);
-      }
 
       setMessages((prev: Message[]) => [...prev, assistantMessage]);
     } catch (error: any) {
@@ -280,6 +236,14 @@ export function CivicCompanion({ accessToken, onBack, initialQuery }: CivicCompa
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSendMessage = async (e: any) => {
+    e.preventDefault();
+    if (!inputMessage.trim() || isLoading) return;
+    const msg = inputMessage;
+    setInputMessage('');
+    await processAndSendMessage(msg);
   };
 
   const quickQuestions = [

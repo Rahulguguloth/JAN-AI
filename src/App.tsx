@@ -30,12 +30,14 @@ export default function App() {
 
   const checkExistingSession = async () => {
     try {
-      const { data: { session }, error } = await supabase.auth.getSession();
+      const storedToken = localStorage.getItem('janai_token');
+      const storedUserId = localStorage.getItem('janai_userId');
+      const storedName = localStorage.getItem('janai_userName');
 
-      if (session?.access_token) {
-        setAccessToken(session.access_token);
-        setUserId(session.user.id);
-        setUserName(session.user.user_metadata?.name || 'User');
+      if (storedToken && storedUserId) {
+        setAccessToken(storedToken);
+        setUserId(storedUserId);
+        setUserName(storedName || 'User');
         setIsAuthenticated(true);
       }
     } catch (error) {
@@ -45,29 +47,30 @@ export default function App() {
     }
   };
 
-  const handleAuthSuccess = (token: string, id: string) => {
+  const handleAuthSuccess = (token: string, id: string, name?: string) => {
     setAccessToken(token);
     setUserId(id);
+    const finalName = name || 'User';
+    setUserName(finalName);
     setIsAuthenticated(true);
+
+    localStorage.setItem('janai_token', token);
+    localStorage.setItem('janai_userId', id);
+    localStorage.setItem('janai_userName', finalName);
 
     // Show feature highlight for new users
     setShowFeatureHighlight(true);
-
-    // Fetch user name
-    supabase.auth.getUser(token).then(({ data }) => {
-      if (data?.user?.user_metadata?.name) {
-        setUserName(data.user.user_metadata.name);
-      }
-    });
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
     setIsAuthenticated(false);
     setAccessToken('');
     setUserId('');
     setUserName('');
     setCurrentScreen('dashboard');
+    localStorage.removeItem('janai_token');
+    localStorage.removeItem('janai_userId');
+    localStorage.removeItem('janai_userName');
   };
 
   const handleNavigate = (screen: string) => {

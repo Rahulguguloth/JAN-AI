@@ -84,7 +84,7 @@ router.post('/generate', async (req: Request, res: Response) => {
     try {
       console.log('📤 Sending request to Groq API...');
       const requestBody = {
-        model: 'llama3-70b-8192',
+        model: 'openai/gpt-oss-20b',
         messages: [
           {
             role: 'system',
