@@ -134,32 +134,37 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`
-╔════════════════════════════════════════════════════╗
-║   🇮🇳 JanAI Backend Server - READY                ║
-╠════════════════════════════════════════════════════╣
-║ 🌐 Server: http://localhost:${PORT}                    ║
-║                                                    ║
-║ 🤖 AI Features:                                    ║
-║   • Civic Companion Chat                          ║
-║   • Document Analysis & Simplification            ║
-║   • Government Scheme Finder                      ║
-║   • Complaint Management System                   ║
-║   • Meeting Summarizer (Gram Sabha)               ║
-║                                                    ║
-║ 🔌 API Endpoints:                                  ║
-║   • /api/companion/*  - Chat assistant            ║
-║   • /api/documents/*  - Document processing       ║
-║   • /api/schemes/*    - Scheme discovery          ║
-║   • /api/complaints/* - Complaint handling        ║
-║   • /api/meetings/*   - Meeting management        ║
-║   • /api/groq/*       - AI generation             ║
-║                                                    ║
-║ 🚀 Powered by: Groq (LLaMA 3.3 70B)               ║
-║ 💚 Health Check: /health                          ║
-║ 📖 API Docs: /                                    ║
-╚════════════════════════════════════════════════════╝
-  `);
-});
+// Start server only if not running in a serverless environment like Vercel
+if (process.env.NODE_ENV !== 'production' || process.env.START_SERVER === 'true') {
+  app.listen(PORT, () => {
+    console.log(`
+  ╔════════════════════════════════════════════════════╗
+  ║   🇮🇳 JanAI Backend Server - READY                ║
+  ╠════════════════════════════════════════════════════╣
+  ║ 🌐 Server: http://localhost:${PORT}                    ║
+  ║                                                    ║
+  ║ 🤖 AI Features:                                    ║
+  ║   • Civic Companion Chat                          ║
+  ║   • Document Analysis & Simplification            ║
+  ║   • Government Scheme Finder                      ║
+  ║   • Complaint Management System                   ║
+  ║   • Meeting Summarizer (Gram Sabha)               ║
+  ║                                                    ║
+  ║ 🔌 API Endpoints:                                  ║
+  ║   • /api/companion/*  - Chat assistant            ║
+  ║   • /api/documents/*  - Document processing       ║
+  ║   • /api/schemes/*    - Scheme discovery          ║
+  ║   • /api/complaints/* - Complaint handling        ║
+  ║   • /api/meetings/*   - Meeting management        ║
+  ║   • /api/groq/*       - AI generation             ║
+  ║                                                    ║
+  ║ 🚀 Powered by: Groq (LLaMA 3.3 70B)               ║
+  ║ 💚 Health Check: /health                          ║
+  ║ 📖 API Docs: /                                    ║
+  ╚════════════════════════════════════════════════════╝
+    `);
+  });
+}
+
+// Export for Vercel serverless function
+export default app;
