@@ -95,10 +95,7 @@ export function Dashboard({ userName, onNavigate, onLogout, onShowFeatures }: Da
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" onClick={() => onNavigate('profile')}>
-              <User className="w-4 h-4 mr-1" />
-              {t('profile')}
-            </Button>
+
             <Button variant="ghost" size="sm" onClick={onLogout}>
               <LogOut className="w-4 h-4 mr-1" />
               {t('logout')}
